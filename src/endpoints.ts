@@ -1,7 +1,7 @@
 import { addDataAndFileToRequest, APIError, getFieldsToSign, jwtSign, type Endpoint, type PayloadRequest } from 'payload'
 import { addSessionToUser, generateCookie } from 'payload/shared'
 
-import { revokeSessions, revokeSid, sessionBySid, sharedLink, wornHat } from './sessions.js'
+import { cleanupSessions, revokeSessions, revokeSid, sessionBySid, sharedLink, tombstone, wornHat } from './sessions.js'
 import { asPlugin, hashToken, hatsOptions, hatsStateOf, idOf, newToken } from './state.js'
 import { LINKS, MEMBERS, SESSIONS, type Hat, type HatsUser, type ResolvedHatsOptions } from './types.js'
 
@@ -175,7 +175,12 @@ const switchHat: Endpoint = {
       }),
     )
     await revokeSid(req.payload, current, state.sid, req)
-    if (s) await req.payload.delete({ collection: SESSIONS as never, id: s.id, overrideAccess: true, req })
+    if (s) await tombstone(req.payload, s.id, req)
+    else
+      await asPlugin(req, () =>
+        req.payload.create({ collection: SESSIONS as never, data: { sid: state.sid, user: current, revokedAt: new Date().toISOString(), expiresAt: expiry(users.auth.tokenExpiration) } as never, overrideAccess: true, req }),
+      )
+    await cleanupSessions(req.payload, req).catch((err) => req.payload.logger.warn({ err }, 'Hats: session clean-up skipped'))
     const { token } = await jwtSign({
       fieldsToSign: getFieldsToSign({ collectionConfig: users, email: String(target!.email ?? ''), sid, user: target as never }),
       secret: req.payload.secret,
@@ -212,6 +217,8 @@ const requestLink: Endpoint = {
     if (!opts.canApproveLinks) refuse('Linking accounts isn’t turned on here.', 403, 'linkingOff')
     const email = String((req.data as { email?: unknown } | undefined)?.email ?? '').trim().toLowerCase()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) refuse('Enter the other account’s email address.', 400, 'enterEmail')
+    // Refused when the site's limit says so (and when the limit itself fails): nothing is recorded or sent.
+    if (opts.limit && !(await (async () => opts.limit!({ req, user: full, email }))().catch(() => false))) refuse('Too many link requests. Try again later.', 429, 'tooMany')
     const me = String(full.id)
     const now = new Date()
 
