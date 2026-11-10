@@ -1,0 +1,74 @@
+{
+  "name": "@captiveorigins/payload-plugin-hats",
+  "version": "0.1.0",
+  "description": "Linked accounts and role hats for Payload: one person switches between their approved accounts, and acts in one role at a time, with a second factor before switching up.",
+  "keywords": [
+    "payload",
+    "payload-plugin",
+    "payloadcms",
+    "account-switcher",
+    "linked-accounts",
+    "roles",
+    "least-privilege",
+    "step-up-authentication"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/CaptiveOrigins/payload-plugin-hats#readme",
+  "bugs": {
+    "url": "https://github.com/CaptiveOrigins/payload-plugin-hats/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CaptiveOrigins/payload-plugin-hats.git"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "peerDependencies": {
+    "payload": "^3.80.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@payloadcms/db-mongodb": "3.92.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "graphql": "^16.14.2",
+    "mongodb-memory-server": "^11.3.0",
+    "payload": "3.92.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.0",
+    "vitest": "^5.1.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}
