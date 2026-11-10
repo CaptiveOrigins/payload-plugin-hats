@@ -36,8 +36,8 @@ export type HatsOptions = {
   canApproveLinks?: (args: { req: PayloadRequest; user: HatsUser }) => boolean | Promise<boolean>
   /** The site's second factor, asked before switching into a sensitive hat. */
   stepUp?: {
-    /** Whether the account has a second factor set up at all. */
-    available: (user: HatsUser) => boolean
+    /** Whether the account has a second factor set up at all. May look it up (async), since it's often a hidden field. */
+    available: (user: HatsUser) => boolean | Promise<boolean>
     /** Check a code for `user`. Resolve true only for a good code. */
     verify: (args: { req: PayloadRequest; user: HatsUser; code: string }) => boolean | Promise<boolean>
     /** How long a good code is remembered, per account, in minutes. Default 180 (three hours). */

@@ -96,7 +96,7 @@ beforeAll(async () => {
           hatsOf,
           wear,
           canApproveLinks: ({ user }) => Boolean((user as U).maintainer),
-          stepUp: { available: (u) => Boolean((u as U).code), verify: ({ user, code }) => code === (user as U).code },
+          stepUp: { available: async (u) => Boolean((u as U).code), verify: ({ user, code }) => code === (user as U).code },
           blocked: () => (masquerading ? 'Stop masquerading first.' : null),
           sendEmail: async ({ to, text }) => void mail.push({ to, text }),
           onEvent: (e) => void events.push(e),
