@@ -2,14 +2,15 @@
 
 Linked accounts and role hats for Payload. One person links their accounts and switches between them, and an account with several roles acts in one at a time. Switching up into a sensitive role asks for a second factor.
 
-**Status:** early, 0.x. The server side passes 14 tests against a real Payload 3.92 and MongoDB, with made-up roles and a fake second factor. The two React components were tried in a browser on a local copy of a real site (2026-11-09) with made-up accounts: keyboard, a real authenticator code, the approval form, and axe with 0 findings on the switch, the code prompt and the linking section in light and dark. It isn't in use on any site yet.
+**Status:** early, 0.x. The server side passes 17 tests against a real Payload 3.92 and MongoDB, with made-up roles and a fake second factor. The two React components were tried in a browser on a local copy of a real site (2026-11-09) with made-up accounts: keyboard, a real authenticator code, the approval form, and axe with 0 findings on the switch, the code prompt and the linking section in light and dark. It isn't in use on any site yet.
 
 ## What it does
 
 - **Linked accounts.** Up to 4 accounts per person. Linking needs both emails confirmed and an approver who isn't in the set. Unlinking is self-serve and immediate.
 - **Hats.** Wearing a hat narrows the user before `req.user` exists, so every access rule follows it: admin, REST, GraphQL and the Local API with `req`. If narrowing fails, the request is signed out, never given full roles.
 - **Step-up.** Switching into a sensitive hat asks for that account's second factor, remembered for 3 hours per account.
-- **Revocation.** Unlinking, deleting a row, losing a role or deleting an account ends every session switched into or through it. Switched sessions also re-check their set on every request.
+- **Revocation.** Unlinking, deleting a row, losing a role or deleting an account ends every session switched into or through it. Switched sessions also re-check their set on every request. An ended session's record is kept, marked revoked, so a session that Payload writes back by accident (two writes to an account's sessions at once) stays signed out. Old records are deleted once their Payload session is gone, at most 50 per switch.
+- **Link limits.** Pass `limit` to rate-limit link requests, per person and per email address. When it says no, or fails, the request is refused with `tooMany` and nothing is sent.
 
 Needs Payload sessions (`auth.useSessions`, on by default).
 
@@ -23,8 +24,11 @@ hats({
   wear: (user, hat) => ({ ...user, roles: hat === 'admin' ? user.roles : ['member'] }),
   canApproveLinks: ({ user }) => user.roles.includes('admin'),
   stepUp: { available: (user) => hasAuthenticator(user), verify: ({ user, code }) => checkCode(user, code) },
+  limit: ({ user, email }) => allowAttempt('hatsLink', `${user.id}:${email}`), // optional
 })
 ```
+
+`wear` must return a narrowed copy of the user, never the user itself: Hats refuses the request if it gets the same object back, if a hat adds one the account doesn't hold, or if an ordinary hat keeps a sensitive one.
 
 Endpoints, under the API route:
 

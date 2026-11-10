@@ -120,6 +120,8 @@ export function hatCollections(opts: ResolvedHatsOptions): CollectionConfig[] {
       // Per account: when its second factor was last given in this browser, so switching up is asked again later.
       { name: 'steppedUp', type: 'json' },
       { name: 'expiresAt', type: 'date', index: true },
+      // Set when the session is ended. Kept so a session Payload puts back by accident stays signed out.
+      { name: 'revokedAt', type: 'date', index: true },
     ],
   }
 

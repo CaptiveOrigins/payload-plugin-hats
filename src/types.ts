@@ -50,6 +50,12 @@ export type HatsOptions = {
   showSwitch?: (args: { user: HatsUser; hats: Hat[]; linked: { user: HatsUser; hats: Hat[] }[] }) => boolean
   /** A reason switching is refused right now (e.g. "Stop masquerading first."), or null. */
   blocked?: (req: PayloadRequest) => string | null | Promise<string | null>
+  /**
+   * Rate limit for link requests: resolve false to refuse this one ("Too many link requests. Try again later.").
+   * Called with the acting account and the email it asked for, so a site can limit per person and per address.
+   * Default: no limit beyond `maxLinked` and the one-set-per-account rule.
+   */
+  limit?: (args: { req: PayloadRequest; user: HatsUser; email: string }) => boolean | Promise<boolean>
   /** Most accounts in one linked set. Default 4. */
   maxLinked?: number
   /** Sends the link-confirmation email. Default: `payload.sendEmail`. */
@@ -72,8 +78,8 @@ export type HatsEvent =
   | { type: 'switched'; req: PayloadRequest; from: string; to: string; hat: string; via: string; steppedUp: boolean }
   | { type: 'sessions-revoked'; payload: Payload; sessions: number; reason: string }
 
-export type ResolvedHatsOptions = Required<Omit<HatsOptions, 'stepUp' | 'canApproveLinks' | 'blocked' | 'onEvent' | 'confirmURL'>> &
-  Pick<HatsOptions, 'stepUp' | 'canApproveLinks' | 'blocked' | 'onEvent' | 'confirmURL'>
+export type ResolvedHatsOptions = Required<Omit<HatsOptions, 'stepUp' | 'canApproveLinks' | 'blocked' | 'limit' | 'onEvent' | 'confirmURL'>> &
+  Pick<HatsOptions, 'stepUp' | 'canApproveLinks' | 'blocked' | 'limit' | 'onEvent' | 'confirmURL'>
 
 export const LINKS = 'hat-links'
 export const MEMBERS = 'hat-members'

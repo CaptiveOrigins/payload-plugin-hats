@@ -3,7 +3,8 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import { buildConfig, createLocalReq, createPayloadRequest, getPayload, type SanitizedConfig, type Endpoint, type Payload, type PayloadRequest } from 'payload'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { applyHat, hats, hatsStateOf, MEMBERS, SESSIONS, type Hat, type HatsEvent, type HatsUser } from '../src/index.js'
+import { applyHat, cleanupSessions, hats, hatsStateOf, MEMBERS, SESSIONS, type Hat, type HatsEvent, type HatsUser } from '../src/index.js'
+import type { ResolvedHatsOptions } from '../src/types.js'
 
 /**
  * A made-up site: a role ladder member < author < curator < admin (curator and admin sensitive), notes only admins
@@ -98,6 +99,10 @@ beforeAll(async () => {
           canApproveLinks: ({ user }) => Boolean((user as U).maintainer),
           stepUp: { available: async (u) => Boolean((u as U).code), verify: ({ user, code }) => code === (user as U).code },
           blocked: () => (masquerading ? 'Stop masquerading first.' : null),
+          limit: ({ email }) => {
+            if (email.startsWith('broken-')) throw new Error('limit store down')
+            return !email.startsWith('limited-')
+          },
           sendEmail: async ({ to, text }) => void mail.push({ to, text }),
           onEvent: (e) => void events.push(e),
         }),
@@ -220,6 +225,19 @@ describe('hats on one account', () => {
   })
 })
 
+describe('wear() that doesn’t narrow', () => {
+  it('refuses a wear() that hands back the same user', async () => {
+    // An author wearing Member: no sensitive hat involved, so only this guard can catch it.
+    const u = await make(email('w'), 'author')
+    const token = await login(u.email!)
+    expect((await call('/hats/switch', token, { hat: 'member' })).status).toBe(200)
+    const sid = hatsStateOf(await whoIs(token))!.sid
+    const raw = (await payload.findByID({ collection: 'users', id: u.id, depth: 0, overrideAccess: true })) as unknown as HatsUser
+    const opts = { ...(payload.config.custom!.hats as ResolvedHatsOptions), wear: (x: HatsUser) => x }
+    await expect(applyHat(payload, opts, { ...raw, collection: 'users', _sid: sid } as HatsUser)).rejects.toThrow(/unchanged/)
+  })
+})
+
 describe('linking', () => {
   it('needs both emails confirmed and an approver outside the set; tokens work once', async () => {
     const maint = await make(email('maint'), 'admin', { maintainer: true, code: '9' })
@@ -271,6 +289,19 @@ describe('linking', () => {
     const row = (await payload.find({ collection: MEMBERS as never, where: { user: { equals: fresh.id } }, overrideAccess: true })).docs[0]!
     await payload.update({ collection: MEMBERS as never, id: row.id, data: { tokenExpires: new Date(Date.now() - 1000).toISOString() } as never, overrideAccess: true, context: { hatsInternal: true } })
     expect((await call('/hats/confirm', null, { token: t })).status).toBe(400)
+  })
+
+  it('refuses link requests the site’s limit refuses, and when the limit itself fails, sending nothing', async () => {
+    const a = await make(email('lim'), 'member')
+    const target = await make(`limited-${email('t')}`, 'member')
+    const broken = await make(`broken-${email('t')}`, 'member')
+    for (const to of [target, broken]) {
+      const res = await call('/hats/link', await login(a.email!), { email: to.email })
+      expect(res.status).toBe(429)
+      expect(res.body.data?.reason).toBe('tooMany')
+    }
+    expect(mail).toHaveLength(0)
+    expect((await payload.find({ collection: MEMBERS as never, where: { user: { in: [a.id, target.id, broken.id] } }, overrideAccess: true })).totalDocs).toBe(0)
   })
 
   it('holds at most four accounts, and one set per account', async () => {
@@ -360,7 +391,44 @@ describe('switching accounts', () => {
     const sid = hatsStateOf(await whoIs(s.token))!.sid
     await payload.db.deleteMany({ collection: MEMBERS, where: { user: { equals: s.b.id } } })
     expect(await whoIs(s.token)).toBeNull()
-    expect((await payload.find({ collection: SESSIONS as never, where: { sid: { equals: sid } }, overrideAccess: true })).totalDocs).toBe(0)
+    const rows = (await payload.find({ collection: SESSIONS as never, where: { sid: { equals: sid } }, overrideAccess: true })).docs as { revokedAt?: string }[]
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.revokedAt).toBeTruthy() // kept as a tombstone, not deleted
+  })
+
+  it('keeps a revoked session signed out even when Payload puts it back', async () => {
+    const { a, b } = await linkedPair()
+    const res = await call('/hats/switch', await login(a.email!), { account: b.id, hat: 'member' })
+    const sid = hatsStateOf(await whoIs(res.token!))!.sid
+    const sessionsOf = async () => ((await payload.findByID({ collection: 'users', id: b.id, depth: 0, overrideAccess: true, showHiddenFields: true })) as unknown as { sessions: { id: string }[] }).sessions
+    const before = await sessionsOf()
+    expect(before.some((x) => x.id === sid)).toBe(true)
+    // b loses a role: switched sessions end, while the link itself stays.
+    await payload.update({ collection: 'users', id: b.id, data: { level: 'curator' } as never, overrideAccess: true })
+    expect(await whoIs(res.token!)).toBeNull()
+    // A sign-in elsewhere that read b's sessions before the revocation writes them all back.
+    await payload.db.updateOne({ collection: 'users', id: b.id, data: { sessions: before }, returning: false })
+    expect((await sessionsOf()).some((x) => x.id === sid)).toBe(true)
+    // Still signed out: never a plain sign-in with b's every role. And the session is taken off again.
+    expect(await whoIs(res.token!)).toBeNull()
+    expect((await sessionsOf()).some((x) => x.id === sid)).toBe(false)
+  })
+
+  it('cleans up session records only once their Payload session is gone', async () => {
+    const { a, b } = await linkedPair()
+    const res = await call('/hats/switch', await login(a.email!), { account: b.id, hat: 'member' })
+    const sid = hatsStateOf(await whoIs(res.token!))!.sid
+    const old = new Date(Date.now() - 3 * 86_400_000).toISOString()
+    // A live switched session whose record says it expired (Payload refreshed it): kept.
+    await payload.update({ collection: SESSIONS as never, where: { sid: { equals: sid } }, data: { expiresAt: old } as never, overrideAccess: true })
+    // A long-gone one: removed.
+    await payload.create({ collection: SESSIONS as never, data: { sid: `gone-${n}`, user: String(b.id), revokedAt: old, expiresAt: old } as never, overrideAccess: true })
+    await cleanupSessions(payload)
+    const left = async (s: string) => (await payload.find({ collection: SESSIONS as never, where: { sid: { equals: s } }, overrideAccess: true })).totalDocs
+    expect(await left(sid)).toBe(1)
+    expect(await left(`gone-${n}`)).toBe(0)
+    const asB = await whoIs(res.token!)
+    expect(asB!.level).toBe('member') // still narrowed
   })
 
   it('records who did what for the audit log', async () => {

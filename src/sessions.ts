@@ -3,7 +3,7 @@ import type { AuthStrategy, Payload, PayloadRequest, Where } from 'payload'
 import { asPlugin, attachState, hatsOptions, idOf } from './state.js'
 import { LINKS, MEMBERS, SESSIONS, type Hat, type HatsState, type HatsUser, type ResolvedHatsOptions } from './types.js'
 
-type SessionDoc = { id: string; sid: string; user: string; via?: string | null; link?: string | null; hat?: string | null; steppedUp?: Record<string, string> | null }
+type SessionDoc = { id: string; sid: string; user: string; via?: string | null; link?: string | null; hat?: string | null; steppedUp?: Record<string, string> | null; revokedAt?: string | null; expiresAt?: string | null }
 
 export async function sessionBySid(payload: Payload, sid: string, req?: PayloadRequest) {
   const { docs } = await payload.find({ collection: SESSIONS as never, where: { sid: { equals: sid } }, limit: 1, depth: 0, overrideAccess: true, pagination: false, req })
@@ -21,12 +21,22 @@ export async function revokeSid(payload: Payload, userId: string, sid: string, r
   await payload.db.updateOne({ collection: users, id: user.id, data: { sessions: user.sessions.filter((s) => s.id !== sid) }, req, returning: false })
 }
 
+/**
+ * Marks a session's record revoked instead of deleting it. Payload writes a user's whole `sessions` list at once, so a
+ * sign-in at the same moment can put a revoked session back; the tombstone makes sure that session stays signed out,
+ * rather than looking like a plain sign-in with every role. Tombstones go once they can't matter (`cleanupSessions`).
+ */
+export async function tombstone(payload: Payload, id: string, req?: PayloadRequest) {
+  await payload.update({ collection: SESSIONS as never, id, data: { revokedAt: new Date().toISOString() } as never, overrideAccess: true, req })
+}
+
 /** Ends every switched session matching `where` (and its Payload session), e.g. after an unlink. */
 export async function revokeSessions(payload: Payload, where: Where, reason: string, req?: PayloadRequest) {
-  const { docs } = await payload.find({ collection: SESSIONS as never, where, limit: 0, depth: 0, overrideAccess: true, pagination: false, req })
+  const live: Where = { and: [where, { revokedAt: { exists: false } }] }
+  const { docs } = await payload.find({ collection: SESSIONS as never, where: live, limit: 0, depth: 0, overrideAccess: true, pagination: false, req })
   for (const s of docs as unknown as SessionDoc[]) {
     await revokeSid(payload, s.user, s.sid, req)
-    await payload.delete({ collection: SESSIONS as never, id: s.id, overrideAccess: true, req })
+    await tombstone(payload, s.id, req)
   }
   if (docs.length) await hatsOptions(payload).onEvent?.({ type: 'sessions-revoked', payload, sessions: docs.length, reason })
   return docs.length
@@ -81,6 +91,11 @@ export async function applyHat(payload: Payload, opts: ResolvedHatsOptions, user
   if (!sid) return user // API keys and other non-session sign-ins: the site's own business.
   const s = await sessionBySid(payload, sid)
   if (s && String(s.user) !== String(user.id)) throw new Error('Hats: this session belongs to another account.')
+  if (s?.revokedAt) {
+    // A revoked session that came back (see `tombstone`): end it again, and sign this request out.
+    await revokeSid(payload, String(user.id), sid)
+    return null
+  }
   if (s?.via) {
     const link = await sharedLink(payload, String(user.id), String(s.via))
     if (!link || link !== String(s.link)) {
@@ -98,6 +113,8 @@ export async function applyHat(payload: Payload, opts: ResolvedHatsOptions, user
   // Wearing a hat never adds one, and an ordinary hat never carries a sensitive one with it.
   for (const h of after) if (!held.has(h.id)) throw new Error(`Hats: wearing "${hat.id}" added "${h.id}", which the account doesn't hold.`)
   for (const h of after) if (h.sensitive && !hat.sensitive) throw new Error(`Hats: wearing "${hat.id}" kept the sensitive hat "${h.id}".`)
+  // A wear() that hands back the same object didn't narrow anything: refuse rather than act in every role.
+  if (narrowed === user) throw new Error(`Hats: wear("${hat.id}") returned the user unchanged; it must return a narrowed copy.`)
   return attachState(narrowed, state)
 }
 
@@ -115,4 +132,28 @@ export function wrapStrategies(payload: Payload, opts: ResolvedHatsOptions) {
       },
     }),
   )
+}
+
+const DAY = 86_400_000
+
+/**
+ * Deletes session records that can't matter any more: expired over a day ago, and with no unexpired Payload session
+ * of that id left on the account. A record whose Payload session was kept alive (a refresh moves its expiry) stays,
+ * because deleting it would turn a narrowed or switched session into a plain one. At most `max` per call.
+ */
+export async function cleanupSessions(payload: Payload, req?: PayloadRequest, max = 50) {
+  const { users } = hatsOptions(payload)
+  const before = new Date(Date.now() - DAY).toISOString()
+  const { docs } = await payload.find({ collection: SESSIONS as never, where: { expiresAt: { less_than: before } }, limit: max, depth: 0, overrideAccess: true, pagination: false, req })
+  let removed = 0
+  for (const s of docs as unknown as SessionDoc[]) {
+    const user = (await payload.findByID({ collection: users as never, id: s.user, depth: 0, overrideAccess: true, showHiddenFields: true, disableErrors: true, req })) as
+      | { sessions?: { id: string; expiresAt?: string | Date }[] }
+      | null
+    const alive = user?.sessions?.some((x) => x.id === s.sid && (!x.expiresAt || new Date(x.expiresAt).getTime() > Date.now()))
+    if (alive) continue
+    await payload.delete({ collection: SESSIONS as never, id: s.id, overrideAccess: true, req })
+    removed++
+  }
+  return removed
 }

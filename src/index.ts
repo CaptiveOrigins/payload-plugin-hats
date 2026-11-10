@@ -7,7 +7,7 @@ import { asPlugin } from './state.js'
 import { MEMBERS, SESSIONS, type HatsOptions, type HatsUser, type ResolvedHatsOptions } from './types.js'
 
 export { hatsStateOf } from './state.js'
-export { applyHat, revokeSessions } from './sessions.js'
+export { applyHat, cleanupSessions, revokeSessions } from './sessions.js'
 export { LINKS, MEMBERS, SESSIONS } from './types.js'
 export type { Hat, HatsEvent, HatsOptions, HatsState, HatsUser } from './types.js'
 
@@ -50,7 +50,7 @@ export const hats =
     }
     const afterLogout: CollectionAfterLogoutHook = async ({ req }) => {
       const sid = (req.user as HatsUser | null)?._sid
-      if (sid) await req.payload.delete({ collection: SESSIONS as never, where: { sid: { equals: sid } }, overrideAccess: true, req })
+      if (sid) await req.payload.update({ collection: SESSIONS as never, where: { sid: { equals: sid } }, data: { revokedAt: new Date().toISOString() } as never, overrideAccess: true, req })
     }
 
     const onInit = config.onInit
