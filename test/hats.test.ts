@@ -12,8 +12,9 @@ import type { ResolvedHatsOptions } from '../src/types.js'
  */
 const LADDER = ['member', 'author', 'curator', 'admin'] as const
 type Level = (typeof LADDER)[number]
-type U = HatsUser & { level: Level; maintainer?: boolean; code?: string | null }
+type U = HatsUser & { level: Level; maintainer?: boolean; code?: string | null; disabled?: boolean }
 const hatsOf = (u: HatsUser): Hat[] => {
+  if ((u as U).disabled) return [] // as a site does for a disabled account
   const level = LADDER.indexOf((u as U).level ?? 'member')
   return LADDER.slice(0, level + 1).map((id) => ({ id, label: id[0]!.toUpperCase() + id.slice(1), sensitive: id === 'curator' || id === 'admin' }))
 }
@@ -88,6 +89,7 @@ beforeAll(async () => {
             { name: 'level', type: 'select', options: [...LADDER], defaultValue: 'member', saveToJWT: true },
             { name: 'maintainer', type: 'checkbox' },
             { name: 'code', type: 'text' },
+            { name: 'disabled', type: 'checkbox' },
           ],
         },
         { slug: 'secrets', access: { read: ({ req }) => (req.user as U | null)?.level === 'admin' }, fields: [{ name: 'text', type: 'text' }] },
@@ -222,6 +224,34 @@ describe('hats on one account', () => {
     const admin = await make(email('admin'), 'admin', { code: '1' })
     masquerading = true
     expect((await call('/hats/switch', await login(admin.email!), { hat: 'member' })).status).toBe(409)
+  })
+})
+
+describe('an account left with no hats', () => {
+  it('signs out its sessions that wear a hat or came from another account, instead of giving them every role', async () => {
+    // Its own session, wearing a narrower hat.
+    const own = await make(email('nohat'), 'author')
+    const token = await login(own.email!)
+    expect((await call('/hats/switch', token, { hat: 'member' })).status).toBe(200)
+    // Disabled without any hook running (a direct write), so only the per-request check stands in the way.
+    await payload.db.updateOne({ collection: 'users', id: own.id, data: { disabled: true }, returning: false })
+    expect(await whoIs(token)).toBeNull()
+
+    // A session switched into it from a linked account.
+    const approver = await make(email('maint'), 'admin', { maintainer: true })
+    const a = await make(email('a'), 'author')
+    const b = await make(email('b'), 'admin', { code: '424242' })
+    await link(a, b, approver)
+    const res = await call('/hats/switch', await login(a.email!), { account: b.id, hat: 'member' })
+    expect(await whoIs(res.token!)).toBeTruthy()
+    await payload.db.updateOne({ collection: 'users', id: b.id, data: { disabled: true }, returning: false })
+    expect(await whoIs(res.token!)).toBeNull()
+
+    // A plain sign-in with no hats is the site's business (it refuses disabled accounts at sign-in): unchanged.
+    const plain = await make(email('plain'), 'member')
+    const plainToken = await login(plain.email!)
+    await payload.db.updateOne({ collection: 'users', id: plain.id, data: { disabled: true }, returning: false })
+    expect((await whoIs(plainToken))?.id).toBe(plain.id)
   })
 })
 

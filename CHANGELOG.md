@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 (2026-11-10)
+
+- **A session with nothing left to wear is signed out.** If a site's `hatsOf` gives an account no hats at all (for example, because the site disabled it), a session the plugin keeps a record for, one switched in from another account or one wearing a hat, is now revoked and signed out. Before, with no hat to narrow to, it was handed the account with every role. A plain sign-in with no record is unchanged: refusing a disabled account at sign-in is the site's job.
+
+Tested: 22 tests (18 server, 4 client). The new test, which disables an account with a direct write so no hook runs, fails without the change.
+
 ## 0.1.2 (2026-11-10)
 
 Security fixes from a review of 0.1.1.

@@ -104,6 +104,12 @@ export async function applyHat(payload: Payload, opts: ResolvedHatsOptions, user
     }
   }
   const hats = opts.hatsOf(user)
+  // A session the plugin keeps a record for (switched into, or wearing a hat) whose account now has no hats at all,
+  // e.g. one a site disabled: sign it out. Without a hat to narrow to it would otherwise get every role.
+  if (!hats.length && s && (s.via || s.hat)) {
+    await revokeSessions(payload, { sid: { equals: sid } }, 'no hats left')
+    return null
+  }
   const hat = wornHat(hats, s)
   const state: HatsState = { sid, hat: hat?.id ?? null, via: s?.via ? String(s.via) : null, link: s?.link ? String(s.link) : null }
   if (!hat || hat.id === hats.at(-1)!.id) return attachState(user, state)

@@ -2,7 +2,7 @@
 
 Linked accounts and role hats for Payload. One person links their accounts and switches between them, and an account with several roles acts in one at a time. Switching up into a sensitive role asks for a second factor.
 
-**Status:** early, 0.x. The server side passes 17 tests against a real Payload 3.92 and MongoDB, with made-up roles and a fake second factor. The two React components were tried in a browser on a local copy of a real site (2026-11-09) with made-up accounts: keyboard, a real authenticator code, the approval form, and axe with 0 findings on the switch, the code prompt and the linking section in light and dark. It isn't in use on any site yet.
+**Status:** early, 0.x. The server side passes 18 tests against a real Payload 3.92 and MongoDB, with made-up roles and a fake second factor. The two React components were tried in a browser on a local copy of a real site (2026-11-09) with made-up accounts: keyboard, a real authenticator code, the approval form, and axe with 0 findings on the switch, the code prompt and the linking section in light and dark. It isn't in use on any site yet.
 
 ## What it does
 
