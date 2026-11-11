@@ -1,6 +1,7 @@
 import { addDataAndFileToRequest, APIError, getFieldsToSign, jwtSign, type Endpoint, type PayloadRequest } from 'payload'
 import { addSessionToUser, generateCookie } from 'payload/shared'
 
+import { exactlyTrue } from './access.js'
 import { cleanupSessions, revokeSessions, revokeSid, sessionBySid, sharedLink, tombstone, wornHat } from './sessions.js'
 import { asPlugin, hashToken, hatsOptions, hatsStateOf, idOf, newToken } from './state.js'
 import { LINKS, MEMBERS, SESSIONS, type Hat, type HatsUser, type ResolvedHatsOptions } from './types.js'
@@ -144,10 +145,12 @@ const switchHat: Endpoint = {
     let gaveCode = false
     if (hat!.sensitive && hat!.id !== nowWearing && !remembered(opts, steppedUp, to)) {
       if (!opts.stepUp) refuse('This site has no second factor for switching up.', 403, 'noSecondFactor')
-      if (!(await opts.stepUp!.available(target!))) refuse('Set up two-step sign-in on that account first.', 403, 'setUpTwoStep')
+      // Only an exact `true` passes either check; a truthy answer such as `{ valid: false }`, or a thrown error, is a no.
+      const stepUp = opts.stepUp!
+      if (!(await exactlyTrue(() => stepUp.available(target!)))) refuse('Set up two-step sign-in on that account first.', 403, 'setUpTwoStep')
       const code = typeof body.code === 'string' ? body.code.trim() : ''
       if (!code) return json({ ok: false, needsCode: true, reason: 'needsCode', message: 'Enter a code from that account’s authenticator app.' }, 401)
-      if (!(await opts.stepUp!.verify({ req, user: target!, code }))) refuse('That code didn’t work. Try a new one.', 403, 'wrongCode')
+      if (!(await exactlyTrue(() => stepUp.verify({ req, user: target!, code })))) refuse('That code didn’t work. Try a new one.', 403, 'wrongCode')
       steppedUp[to] = new Date().toISOString()
       gaveCode = true
     }

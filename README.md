@@ -2,7 +2,7 @@
 
 Linked accounts and role hats for Payload. One person links their accounts and switches between them, and an account with several roles acts in one at a time. Switching up into a sensitive role asks for a second factor.
 
-**Status:** early, 0.x. The server side passes 18 tests against a real Payload 3.92 and MongoDB, with made-up roles and a fake second factor. The two React components were tried in a browser on a local copy of a real site (2026-11-09) with made-up accounts: keyboard, a real authenticator code, the approval form, and axe with 0 findings on the switch, the code prompt and the linking section in light and dark. It isn't in use on any site yet.
+**Status:** early, 0.x. The server side passes 20 tests against a real Payload 3.92 and MongoDB, with made-up roles and a fake second factor. The two React components were tried in a browser on a local copy of a real site (2026-11-09) with made-up accounts: keyboard, a real authenticator code, the approval form, and axe with 0 findings on the switch, the code prompt and the linking section in light and dark. It isn't in use on any site yet.
 
 ## What it does
 
@@ -17,6 +17,8 @@ Needs Payload sessions (`auth.useSessions`, on by default).
 ## On its own, and with others
 
 **On its own:** it needs a users auth collection with Payload sessions, plus your `hatsOf` and `wear`, built from the roles you already have. Linking stays off until you set `canApproveLinks`, and switching into a sensitive hat is refused until you give it a `stepUp`.
+
+**Only `true` counts.** `canApproveLinks`, `stepUp.available` and `stepUp.verify` must answer exactly `true` (or a promise of it). Anything else is a no: `false`, `1`, `'yes'`, an object such as `{ valid: false }`, or an error thrown or rejected. A refused step-up answers 403 (`setUpTwoStep` or `wrongCode`) and a refused approval 403, never a 500. If your verifier returns a result object, pass its flag: `verify: async (a) => (await check(a)).valid === true`.
 
 **Works with:**
 - **MFA:** MFA's `isOnFor` and `verify` make the `stepUp`. MFA's README has the two lines.

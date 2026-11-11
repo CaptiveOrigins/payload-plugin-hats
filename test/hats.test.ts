@@ -27,6 +27,21 @@ const PW = 'correct-horse-battery'
 const mail: { to: string; text: string }[] = []
 const events: HatsEvent[] = []
 let masquerading = false
+/** Stand-in answers for the site's own checks, so a test can make them say something other than true or false. */
+const answers: { approve?: () => unknown; available?: () => unknown; verify?: () => unknown } = {}
+/** Truthy answers that aren't `true`, and a thrown error: every one must be a no. */
+const NOT_TRUE: [string, () => unknown][] = [
+  ['1', () => 1],
+  ["'yes'", () => 'yes'],
+  ['{ valid: false }', () => ({ valid: false })],
+  ['a resolved object', async () => ({})],
+  ['a thrown error', () => {
+    throw new Error('check store down')
+  }],
+  ['a rejected promise', async () => {
+    throw new Error('check store down')
+  }],
+]
 
 const tokenFrom = (text: string) => /token=([\w-]+)/.exec(text)?.[1] ?? ''
 const endpoint = (path: string, method: string) => (payload.config.endpoints as Endpoint[]).find((e) => e.path === path && e.method === method)!
@@ -98,8 +113,11 @@ beforeAll(async () => {
         hats({
           hatsOf,
           wear,
-          canApproveLinks: ({ user }) => Boolean((user as U).maintainer),
-          stepUp: { available: async (u) => Boolean((u as U).code), verify: ({ user, code }) => code === (user as U).code },
+          canApproveLinks: ({ user }) => (answers.approve ? (answers.approve() as boolean) : Boolean((user as U).maintainer)),
+          stepUp: {
+            available: async (u) => (answers.available ? (answers.available() as boolean) : Boolean((u as U).code)),
+            verify: ({ user, code }) => (answers.verify ? (answers.verify() as boolean) : code === (user as U).code),
+          },
           blocked: () => (masquerading ? 'Stop masquerading first.' : null),
           limit: ({ email }) => {
             if (email.startsWith('broken-')) throw new Error('limit store down')
@@ -122,6 +140,9 @@ let n = 0
 const email = (name: string) => `${name}-${++n}@example.invalid`
 beforeEach(() => {
   masquerading = false
+  delete answers.approve
+  delete answers.available
+  delete answers.verify
   mail.length = 0
 })
 
@@ -467,5 +488,59 @@ describe('switching accounts', () => {
     await call('/hats/switch', await login(a.email!), { account: b.id, hat: 'member' })
     expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(['link-requested', 'link-confirmed', 'link-approved', 'switched']))
     expect(events.find((e) => e.type === 'switched')).toMatchObject({ from: String(a.id), to: String(b.id), via: String(a.id), hat: 'member', steppedUp: false })
+  })
+})
+
+describe('only an exact true from the site’s checks', () => {
+  it('refuses a step-up when available or verify answers anything but true, a throw included, and never 500s', async () => {
+    const admin = await make(email('admin'), 'admin', { code: '246810' })
+    const token = await login(admin.email!)
+    expect((await call('/hats/switch', token, { hat: 'member' })).status).toBe(200)
+
+    for (const [what, answer] of NOT_TRUE) {
+      answers.available = answer
+      const res = await call('/hats/switch', token, { hat: 'admin', code: '246810' })
+      expect(res.status, `available: ${what}`).toBe(403)
+      expect(res.body.data?.reason, `available: ${what}`).toBe('setUpTwoStep')
+    }
+    delete answers.available
+
+    for (const [what, answer] of NOT_TRUE) {
+      answers.verify = answer
+      const res = await call('/hats/switch', token, { hat: 'admin', code: '246810' })
+      expect(res.status, `verify: ${what}`).toBe(403)
+      expect(res.body.data?.reason, `verify: ${what}`).toBe('wrongCode')
+      expect((await whoIs(token))!.level, `verify: ${what}`).toBe('member')
+    }
+    const sid = hatsStateOf(await whoIs(token))!.sid
+    const { docs } = await payload.find({ collection: SESSIONS as never, where: { sid: { equals: sid } }, overrideAccess: true })
+    expect(docs[0]?.steppedUp?.[String(admin.id)]).toBeUndefined() // nothing remembered from a refused code
+
+    answers.available = () => true
+    answers.verify = () => true
+    expect((await call('/hats/switch', token, { hat: 'admin', code: '246810' })).status).toBe(200)
+    expect((await whoIs(token))!.level).toBe('admin')
+  })
+
+  it('refuses link approval, and reading the sets, unless canApproveLinks answers exactly true', async () => {
+    const maint = await make(email('maint'), 'admin', { maintainer: true })
+    const a = await make(email('a'), 'member')
+    const b = await make(email('b'), 'member')
+    expect((await call('/hats/link', await login(a.email!), { email: b.email })).status).toBe(202)
+    for (const m of [...mail]) expect((await call('/hats/confirm', null, { token: tokenFrom(m.text) })).status).toBe(200)
+    const row = async () => (await payload.find({ collection: MEMBERS as never, where: { user: { equals: b.id } }, overrideAccess: true })).docs[0]!
+
+    for (const [what, answer] of NOT_TRUE) {
+      answers.approve = answer
+      const approve = payload.update({ collection: MEMBERS as never, id: (await row()).id, data: { status: 'approved' } as never, user: maint as never, overrideAccess: false })
+      await expect(approve, `approve: ${what}`).rejects.toMatchObject({ status: 403 })
+      await expect(payload.find({ collection: MEMBERS as never, user: maint as never, overrideAccess: false }), `read: ${what}`).rejects.toMatchObject({ status: 403 })
+      expect((await row()).status, what).toBe('confirmed')
+    }
+
+    answers.approve = () => true
+    expect((await payload.find({ collection: MEMBERS as never, where: { user: { equals: b.id } }, user: maint as never, overrideAccess: false })).docs).toHaveLength(1)
+    await payload.update({ collection: MEMBERS as never, id: (await row()).id, data: { status: 'approved' } as never, user: maint as never, overrideAccess: false })
+    expect((await row()).status).toBe('approved')
   })
 })

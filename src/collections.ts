@@ -1,5 +1,6 @@
 import { APIError, type CollectionConfig, type PayloadRequest } from 'payload'
 
+import { exactlyTrue } from './access.js'
 import { dissolveIfAlone, revokeSessions } from './sessions.js'
 import { hatsStateOf, idOf } from './state.js'
 import { LINKS, MEMBERS, SESSIONS, type HatsUser, type ResolvedHatsOptions } from './types.js'
@@ -8,12 +9,14 @@ const internal = (req: PayloadRequest) => req.context?.hatsInternal === true
 
 /**
  * Whether the request's user may approve links. A person never approves their own link: an approver who is (or
- * who signed in as) a member of the set is refused, so the owner's own links need another approver.
+ * who signed in as) a member of the set is refused, so the owner's own links need another approver. Only an exact
+ * `true` from `canApproveLinks` counts: a truthy value or a thrown error is a no.
  */
 async function approver(opts: ResolvedHatsOptions, req: PayloadRequest) {
   const user = req.user as HatsUser | null
   if (!user || user.collection !== opts.users || !opts.canApproveLinks) return false
-  return Boolean(await opts.canApproveLinks({ req, user }))
+  const ask = opts.canApproveLinks
+  return exactlyTrue(() => ask({ req, user }))
 }
 
 export function hatCollections(opts: ResolvedHatsOptions): CollectionConfig[] {

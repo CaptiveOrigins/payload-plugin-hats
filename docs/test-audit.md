@@ -2,6 +2,15 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-11: only an exact `true` passes the site's checks
+
+Suite: 22 tests before, 24 after (`npx vitest run`, real Payload 3.92, in-memory MongoDB, fake second factor). From an access sweep.
+
+- **The change.** `src/access.ts` has `exactlyTrue`: only `true` passes, and a thrown or rejected error is a no. It now guards `canApproveLinks` (link approval, and reading and deleting link rows), `stepUp.available` and `stepUp.verify`. Before, each took any truthy answer, so a verifier returning `{ valid: false }` passed the second factor.
+- **Tests.** "refuses a step-up when available or verify answers anything but true…": `1`, `'yes'`, `{ valid: false }`, a resolved object, a throw and a rejection each get 403 with `setUpTwoStep` or `wrongCode`, the hat stays narrow and nothing is remembered; `true` switches. "refuses link approval, and reading the sets…": the same six answers refuse approval and reading with 403, and the row stays confirmed; `true` approves.
+- **Mutation checks.** 5 mutations, each a Python string replace restored byte for byte (SHA-256 checked). All 5 fail the suite: truthy passing in `exactlyTrue`; errors rethrown; the old truthy check put back at `canApproveLinks`, `available` and `verify`.
+- **Skipped.** `limit`, `blocked` and `showSwitch` weren't in the sweep's findings and keep their documented behavior: `limit` already refuses when it fails, and `blocked` refuses on any reason. Raised for the lead: `limit` still passes any truthy answer, and a `blocked` that throws escapes as an error.
+
 ## 2026-11-09: server side built
 
 All in `test/hats.test.ts`, against a real Payload 3.92 on an in-memory MongoDB replica set, with a made-up role ladder and a fake second factor.
