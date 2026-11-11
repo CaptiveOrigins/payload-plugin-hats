@@ -48,10 +48,14 @@ export type HatsOptions = {
    * one hat. Switching is refused where the switch isn't shown.
    */
   showSwitch?: (args: { user: HatsUser; hats: Hat[]; linked: { user: HatsUser; hats: Hat[] }[] }) => boolean
-  /** A reason switching is refused right now (e.g. "Stop masquerading first."), or null. */
+  /**
+   * A reason switching, linking and unlinking are refused right now (e.g. "Stop masquerading first."), or null to go ahead.
+   * Only null (or undefined) goes ahead: any other answer, and a throw, refuses with 409 `blocked`.
+   */
   blocked?: (req: PayloadRequest) => string | null | Promise<string | null>
   /**
-   * Rate limit for link requests: resolve false to refuse this one ("Too many link requests. Try again later.").
+   * Rate limit for link requests: answer exactly true to allow this one. Anything else, a throw included, refuses it
+   * ("Too many link requests. Try again later.").
    * Called with the acting account and the email it asked for, so a site can limit per person and per address.
    * Default: no limit beyond `maxLinked` and the one-set-per-account rule.
    */

@@ -1,7 +1,7 @@
 import { addDataAndFileToRequest, APIError, getFieldsToSign, jwtSign, type Endpoint, type PayloadRequest } from 'payload'
 import { addSessionToUser, generateCookie } from 'payload/shared'
 
-import { exactlyTrue } from './access.js'
+import { blockedBy, exactlyTrue } from './access.js'
 import { cleanupSessions, revokeSessions, revokeSid, sessionBySid, sharedLink, tombstone, wornHat } from './sessions.js'
 import { asPlugin, hashToken, hatsOptions, hatsStateOf, idOf, newToken } from './state.js'
 import { LINKS, MEMBERS, SESSIONS, type Hat, type HatsUser, type ResolvedHatsOptions } from './types.js'
@@ -64,8 +64,9 @@ const remembered = (opts: ResolvedHatsOptions, steppedUp: Record<string, string>
 }
 
 async function blockedReason(req: PayloadRequest, opts: ResolvedHatsOptions) {
-  const why = await opts.blocked?.(req)
-  if (why) refuse(why, 409, 'blocked')
+  if (!opts.blocked) return
+  const why = await blockedBy(() => opts.blocked!(req))
+  if (why !== null) refuse(why, 409, 'blocked')
 }
 
 /** GET /api/hats: the switch menu for the acting account. */
@@ -220,8 +221,8 @@ const requestLink: Endpoint = {
     if (!opts.canApproveLinks) refuse('Linking accounts isn’t turned on here.', 403, 'linkingOff')
     const email = String((req.data as { email?: unknown } | undefined)?.email ?? '').trim().toLowerCase()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) refuse('Enter the other account’s email address.', 400, 'enterEmail')
-    // Refused when the site's limit says so (and when the limit itself fails): nothing is recorded or sent.
-    if (opts.limit && !(await (async () => opts.limit!({ req, user: full, email }))().catch(() => false))) refuse('Too many link requests. Try again later.', 429, 'tooMany')
+    // Refused unless the site's limit answers exactly true (a throw, false or any other answer is a no): nothing is recorded or sent.
+    if (opts.limit && !(await exactlyTrue(() => opts.limit!({ req, user: full, email })))) refuse('Too many link requests. Try again later.', 429, 'tooMany')
     const me = String(full.id)
     const now = new Date()
 

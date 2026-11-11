@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`limit` and `blocked` fail closed.** `limit` must answer exactly `true` to allow a link request; any other truthy answer is now refused with `tooMany` (429), as a throw already was. A `blocked` that throws, or answers anything but a reason or `null`, now refuses switching, linking and unlinking with 409 `blocked` and a general reason. Before, a throw escaped as a 500. Tested: 26 tests (22 server, 4 client), 5 mutation checks.
+
 ## 0.1.3 (2026-11-10)
 
 - **A session with nothing left to wear is signed out.** If a site's `hatsOf` gives an account no hats at all (for example, because the site disabled it), a session the plugin keeps a record for, one switched in from another account or one wearing a hat, is now revoked and signed out. Before, with no hat to narrow to, it was handed the account with every role. A plain sign-in with no record is unchanged: refusing a disabled account at sign-in is the site's job.

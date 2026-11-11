@@ -2,6 +2,15 @@
 
 Kept by this repo's owning session, per `~/Code/CLAUDE.md`, "Test self-audits". Newest first.
 
+## 2026-11-11: `limit` and `blocked` fail closed
+
+Suite: 24 tests before, 26 after (`npx vitest run`, same setup). Finishes the two items raised below.
+
+- **The change.** `limit` now goes through `exactlyTrue`, so only `true` allows a link request; `1`, `'yes'`, `{ valid: false }` and a throw or rejection get 429 `tooMany`. `src/access.ts` adds `blockedBy`: only `null` or `undefined` goes ahead, a non-empty string is the site's reason, and anything else (`''`, `false`, `1`, an object, a throw, a rejection) refuses with 409 `blocked` and a general reason, never a 500. It guards switch, link and unlink.
+- **Tests.** "refuses a link request unless the site's limit answers exactly true…": the six `NOT_TRUE` answers each get 429 `tooMany`, no mail, no rows; `true` sends both emails. "refuses switching, linking and unlinking unless blocked answers null…": those six plus `''` and `false` each refuse all three endpoints with 409 `blocked`, the hat unchanged and no mail; a string reason is shown; `undefined` and `null` switch.
+- **Mutation checks.** 5 mutations, each a Python string replace restored byte for byte (SHA-256 checked). All 5 fail the suite: the old truthy `limit` check; `limit` with no catch; the old `blocked` call site; `blockedBy` rethrowing; `blockedBy` letting falsy answers through.
+- **Skipped.** `showSwitch` only hides or shows the switch for accounts that already hold the hats; left as it is.
+
 ## 2026-11-11: only an exact `true` passes the site's checks
 
 Suite: 22 tests before, 24 after (`npx vitest run`, real Payload 3.92, in-memory MongoDB, fake second factor). From an access sweep.

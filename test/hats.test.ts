@@ -28,7 +28,7 @@ const mail: { to: string; text: string }[] = []
 const events: HatsEvent[] = []
 let masquerading = false
 /** Stand-in answers for the site's own checks, so a test can make them say something other than true or false. */
-const answers: { approve?: () => unknown; available?: () => unknown; verify?: () => unknown } = {}
+const answers: { approve?: () => unknown; available?: () => unknown; verify?: () => unknown; limit?: () => unknown; blocked?: () => unknown } = {}
 /** Truthy answers that aren't `true`, and a thrown error: every one must be a no. */
 const NOT_TRUE: [string, () => unknown][] = [
   ['1', () => 1],
@@ -118,8 +118,9 @@ beforeAll(async () => {
             available: async (u) => (answers.available ? (answers.available() as boolean) : Boolean((u as U).code)),
             verify: ({ user, code }) => (answers.verify ? (answers.verify() as boolean) : code === (user as U).code),
           },
-          blocked: () => (masquerading ? 'Stop masquerading first.' : null),
+          blocked: () => (answers.blocked ? (answers.blocked() as string | null) : masquerading ? 'Stop masquerading first.' : null),
           limit: ({ email }) => {
+            if (answers.limit) return answers.limit() as boolean
             if (email.startsWith('broken-')) throw new Error('limit store down')
             return !email.startsWith('limited-')
           },
@@ -143,6 +144,8 @@ beforeEach(() => {
   delete answers.approve
   delete answers.available
   delete answers.verify
+  delete answers.limit
+  delete answers.blocked
   mail.length = 0
 })
 
@@ -542,5 +545,54 @@ describe('only an exact true from the site’s checks', () => {
     expect((await payload.find({ collection: MEMBERS as never, where: { user: { equals: b.id } }, user: maint as never, overrideAccess: false })).docs).toHaveLength(1)
     await payload.update({ collection: MEMBERS as never, id: (await row()).id, data: { status: 'approved' } as never, user: maint as never, overrideAccess: false })
     expect((await row()).status).toBe('approved')
+  })
+
+  it('refuses a link request unless the site’s limit answers exactly true, a throw included, and never 500s', async () => {
+    const a = await make(email('lim'), 'member')
+    const b = await make(email('lim'), 'member')
+    const token = await login(a.email!)
+    for (const [what, answer] of NOT_TRUE) {
+      answers.limit = answer
+      const res = await call('/hats/link', token, { email: b.email })
+      expect(res.status, `limit: ${what}`).toBe(429)
+      expect(res.body.data?.reason, `limit: ${what}`).toBe('tooMany')
+    }
+    expect(mail).toHaveLength(0)
+    expect((await payload.find({ collection: MEMBERS as never, where: { user: { in: [a.id, b.id] } }, overrideAccess: true })).totalDocs).toBe(0)
+
+    answers.limit = () => true
+    expect((await call('/hats/link', token, { email: b.email })).status).toBe(202)
+    expect(mail).toHaveLength(2)
+  })
+
+  it('refuses switching, linking and unlinking unless blocked answers null, a throw included, and never 500s', async () => {
+    const admin = await make(email('admin'), 'admin', { code: '1' })
+    const other = await make(email('other'), 'member')
+    const token = await login(admin.email!)
+    const NOT_NULL: [string, () => unknown][] = [
+      ["''", () => ''],
+      ['false', () => false],
+      ...NOT_TRUE,
+    ]
+    for (const [what, answer] of NOT_NULL) {
+      answers.blocked = answer
+      for (const [path, body] of [['/hats/switch', { hat: 'member' }], ['/hats/link', { email: other.email }], ['/hats/unlink', {}]] as const) {
+        const res = await call(path, token, body)
+        expect(res.status, `${path}, blocked: ${what}`).toBe(409)
+        expect(res.body.data?.reason, `${path}, blocked: ${what}`).toBe('blocked')
+        // A string is the site's own reason ('yes' included); anything else gets the general one.
+        expect(res.body.message, `${path}, blocked: ${what}`).toBe(what === "'yes'" ? 'yes' : 'Switching isn’t available right now. Try again later.')
+      }
+    }
+    expect((await whoIs(token))!.level).toBe('admin')
+    expect(mail).toHaveLength(0)
+
+    answers.blocked = () => 'Stop masquerading first.'
+    expect((await call('/hats/switch', token, { hat: 'member' })).body.message).toBe('Stop masquerading first.')
+    answers.blocked = () => undefined
+    expect((await call('/hats/switch', token, { hat: 'member' })).status).toBe(200)
+    answers.blocked = () => null
+    expect((await call('/hats/switch', token, { hat: 'author' })).status).toBe(200)
+    expect((await whoIs(token))!.level).toBe('author')
   })
 })
