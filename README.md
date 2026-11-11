@@ -14,6 +14,20 @@ Linked accounts and role hats for Payload. One person links their accounts and s
 
 Needs Payload sessions (`auth.useSessions`, on by default).
 
+## On its own, and with others
+
+**On its own:** it needs a users auth collection with Payload sessions, plus your `hatsOf` and `wear`, built from the roles you already have. Linking stays off until you set `canApproveLinks`, and switching into a sensitive hat is refused until you give it a `stepUp`.
+
+**Works with:**
+- **MFA:** MFA's `isOnFor` and `verify` make the `stepUp`. MFA's README has the two lines.
+- **Masq:** your `blocked(req)` can refuse switching while masquerading, using Masq's `masqStateOf`. Masq's `canMasquerade` should refuse a switched session, using `hatsStateOf(user).via`.
+- **Guardians:** Hats can be the switcher behind Guardians' required `actingFor`, so a guardian who switched into a kid's account is still seen as the guardian.
+- **Audit Trail:** pass `onEvent` through Audit Trail's `fromPluginEvent`, and use `hatsStateOf(req)` in its `via`, so an entry says which account signed in and which hat was worn.
+
+None of these are imported. The site connects them in its own config.
+
+**Family:** It's part of the **Identity** family (a working draft): plugins designed to sit together for accounts and access.
+
 ## Use
 
 ```ts
