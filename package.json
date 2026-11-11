@@ -1,6 +1,6 @@
 {
   "name": "@captiveorigins/payload-plugin-hats",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Linked accounts and role hats for Payload: one person switches between their approved accounts, and acts in one role at a time, with a second factor before switching up.",
   "keywords": [
     "payload",

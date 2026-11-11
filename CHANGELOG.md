@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 (2026-11-11)
 
 - **`limit` and `blocked` fail closed.** `limit` must answer exactly `true` to allow a link request; any other truthy answer is now refused with `tooMany` (429), as a throw already was. A `blocked` that throws, or answers anything but a reason or `null`, now refuses switching, linking and unlinking with 409 `blocked` and a general reason. Before, a throw escaped as a 500. Tested: 26 tests (22 server, 4 client), 5 mutation checks.
 
