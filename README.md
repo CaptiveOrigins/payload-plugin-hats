@@ -35,7 +35,7 @@ None of these are imported. The site connects them in its own config.
 ## Use
 
 ```ts
-import { hats } from '@captiveorigins/payload-plugin-hats'
+import { hats } from '@extantape/payload-plugin-hats'
 
 hats({
   hatsOf: (user) => [{ id: 'member', label: 'Member' }, { id: 'admin', label: 'Administrator', sensitive: true }],
@@ -58,7 +58,7 @@ Endpoints, under the API route:
 
 Approvers approve in the admin, under Accounts → Linked accounts.
 
-The switch goes in the admin header (turn it off with `adminSwitch: false`). For a site's own pages, `@captiveorigins/payload-plugin-hats/client` has `HatSwitcher` for the header and `LinkedAccounts` for the account page. They need no Payload UI package. By default they take the surrounding text color, and they follow `--hats-ink`, `--hats-paper`, `--hats-line`, `--hats-muted` and `--hats-focus` if you set them.
+The switch goes in the admin header (turn it off with `adminSwitch: false`). For a site's own pages, `@extantape/payload-plugin-hats/client` has `HatSwitcher` for the header and `LinkedAccounts` for the account page. They need no Payload UI package. By default they take the surrounding text color, and they follow `--hats-ink`, `--hats-paper`, `--hats-line`, `--hats-muted` and `--hats-focus` if you set them.
 
 Every word is replaceable for translation: pass `text` (see `defaultText`). Server answers carry a stable `reason` (for example `wrongCode`), and `text.reasons` gives your words for each; anything you leave out shows the English.
 

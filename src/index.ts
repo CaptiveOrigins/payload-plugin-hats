@@ -76,7 +76,7 @@ export const hats =
       admin:
         opts.adminSwitch === false
           ? config.admin
-          : { ...config.admin, components: { ...config.admin?.components, actions: [...(config.admin?.components?.actions ?? []), '@captiveorigins/payload-plugin-hats/client#HatSwitcher'] } },
+          : { ...config.admin, components: { ...config.admin?.components, actions: [...(config.admin?.components?.actions ?? []), '@extantape/payload-plugin-hats/client#HatSwitcher'] } },
       custom: { ...config.custom, hats: opts },
       onInit: async (payload) => {
         await onInit?.(payload)

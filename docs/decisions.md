@@ -13,3 +13,4 @@ Dated decisions for this repo, newest last.
 - 2026-11-09 (build): **the second factor is the target account's.** Switching into account B's sensitive hat asks for B's code, remembered per account.
 - 2026-11-09 (build): **approval uses Payload's own admin form.** Approvers set a confirmed row's status to Approved; a hook refuses every other change. Deleting the row unlinks.
 - 2026-11-09 (build): **a link request never says whether the other account exists**, is already linked, or is the requester's own: the answer and status are always the same.
+- 2026-11-13: moved to the ExtantApe GitHub organization and the `@extantape` npm scope at the same version. EXTANT APE owns its reusable tools and licenses them to the platform. The earlier package name is deprecated with a pointer here, and GitHub redirects the old repository address.
