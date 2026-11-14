@@ -2,7 +2,7 @@
 
 Dated decisions for this repo, newest last.
 
-- 2026-11-09: created from the ops starter kit, area `plugins`.
+- 2026-11-09: created from the standard repo starter kit.
 - 2026-11-09: design approved, with three additions that are now built and tested:
   1. **No self-approval.** An approver who is in the set, or who signed in as an account in it, is refused. The owner's own links need another approver.
   2. **Revocation is immediate.** Unlinking (self-serve), an approver deleting a row, an account losing a hat, or an account being deleted removes the Payload session of every session switched into or through it. The set is also re-checked on every request, so a switched session ends even if a revocation was missed.
