@@ -11,9 +11,9 @@ Run 2026-11-09 by the Web Platform session, before the repo goes public (per ~/C
 | Build output, dependencies, env files committed | None (`dist/`, `node_modules/`, `.env` are ignored) |
 | Private terms (`scripts/leak-check.sh` locally, with ~/.leak-private-terms) | Passed |
 | Leak check in CI | Yes, first step of `.github/workflows/ci.yml` |
-| LICENSE | MIT, Copyright (c) 2026 Captive Origins (added in this audit) |
+| LICENSE | MIT, now "Copyright (c) 2026 EXTANT APE" (added in this audit) |
 | `package.json` | `private` removed so it can be published; license, repository, homepage and `files` set |
-| Release workflow and RELEASING.md | Added, the same as the other Captive Origins packages |
+| Release workflow and RELEASING.md | Added, the same as the other general Payload plugins |
 | README status line says what has and hasn't been tested | Yes |
 | Details of a real site | Removed from the current files in this audit (see below) |
 
